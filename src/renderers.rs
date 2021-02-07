@@ -7,8 +7,6 @@ pub struct ScalingRenderer {
     uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     render_pipeline: wgpu::RenderPipeline,
-    width: f32,
-    height: f32,
     render_texture_format: wgpu::TextureFormat,
 }
 
@@ -16,7 +14,8 @@ impl ScalingRenderer {
     pub(crate) fn new(
         device: &wgpu::Device,
         texture_view: &wgpu::TextureView,
-        texture_size: &wgpu::Extent3d,
+        texture_size: (u32, u32),
+        screen_size: (u32, u32),
         render_texture_format: wgpu::TextureFormat,
     ) -> Self {
         let vs_module = device.create_shader_module(wgpu::include_spirv!("../shaders/vert.spv"));
@@ -38,12 +37,7 @@ impl ScalingRenderer {
         });
 
         // Create uniform buffer
-        // TODO: This should also have the width / height of the of the window surface,
-        // so that it won't break when the window is created with a different size.
-        let matrix = ScalingMatrix::new(
-            (texture_size.width as f32, texture_size.height as f32),
-            (texture_size.width as f32, texture_size.height as f32),
-        );
+        let matrix = ScalingMatrix::new(texture_size, screen_size);
         let transform_bytes = matrix.as_bytes();
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("pixels_scaling_renderer_matrix_uniform_buffer"),
@@ -147,8 +141,7 @@ impl ScalingRenderer {
             uniform_buffer,
             bind_group,
             render_pipeline,
-            width: texture_size.width as f32,
-            height: texture_size.height as f32,
+
             render_texture_format,
         }
     }
@@ -171,8 +164,13 @@ impl ScalingRenderer {
         rpass.draw(0..6, 0..1);
     }
 
-    pub(crate) fn resize(&self, queue: &wgpu::Queue, width: u32, height: u32) {
-        let matrix = ScalingMatrix::new((self.width, self.height), (width as f32, height as f32));
+    pub(crate) fn resize(
+        &self,
+        queue: &wgpu::Queue,
+        texture_size: (u32, u32),
+        screen_size: (u32, u32),
+    ) {
+        let matrix = ScalingMatrix::new(texture_size, screen_size);
         let transform_bytes = matrix.as_bytes();
         queue.write_buffer(&self.uniform_buffer, 0, &transform_bytes);
     }
@@ -184,11 +182,13 @@ pub(crate) struct ScalingMatrix {
 }
 
 impl ScalingMatrix {
-    // texture_size is the dimensions of the drawing texture
+    // texture_size is the dimensions of the input texture
     // screen_size is the dimensions of the surface being drawn to
-    pub(crate) fn new(texture_size: (f32, f32), screen_size: (f32, f32)) -> ScalingMatrix {
-        let (screen_width, screen_height) = screen_size;
-        let (texture_width, texture_height) = texture_size;
+    pub(crate) fn new(texture_size: (u32, u32), screen_size: (u32, u32)) -> ScalingMatrix {
+        let screen_width = screen_size.0 as f32;
+        let screen_height = screen_size.1 as f32;
+        let texture_width = texture_size.0 as f32;
+        let texture_height = texture_size.1 as f32;
 
         // Get smallest scale size
         let scale = (screen_width / texture_width)

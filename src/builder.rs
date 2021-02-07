@@ -230,17 +230,16 @@ impl<'req, 'win, W: HasRawWindowHandle> PixelsBuilder<'req, 'win, W> {
             },
         );
 
-        let scaling_matrix_inverse = ScalingMatrix::new(
-            (width as f32, height as f32),
-            (surface_size.width as f32, surface_size.height as f32),
-        )
-        .transform
-        .inversed();
+        let scaling_matrix_inverse =
+            ScalingMatrix::new((width, height), (surface_size.width, surface_size.height))
+                .transform
+                .inversed();
 
         let scaling_renderer = ScalingRenderer::new(
             &device,
             &texture_view,
-            &texture_extent,
+            (texture_extent.width, texture_extent.height),
+            (self.width, self.height),
             self.render_texture_format,
         );
 

@@ -75,6 +75,8 @@ pub struct PixelsContext {
     /// Provides access to the texture size.
     pub texture_extent: wgpu::Extent3d,
 
+    pub render_texture_format: wgpu::TextureFormat,
+
     /// Defines the "data rate" for the raw texture data. This is effectively the "bytes per pixel"
     /// count.
     ///
@@ -197,10 +199,10 @@ impl Pixels {
         // Update ScalingMatrix for mouse transformation
         self.scaling_matrix_inverse = renderers::ScalingMatrix::new(
             (
-                self.context.texture_extent.width as f32,
-                self.context.texture_extent.height as f32,
+                self.context.texture_extent.width,
+                self.context.texture_extent.height,
             ),
-            (width as f32, height as f32),
+            (self.surface_size.width, self.surface_size.height),
         )
         .transform
         .inversed();
@@ -218,9 +220,59 @@ impl Pixels {
         );
 
         // Update state for all render passes
-        self.context
-            .scaling_renderer
-            .resize(&self.context.queue, width, height);
+        self.context.scaling_renderer.resize(
+            &self.context.queue,
+            (
+                self.context.texture_extent.width,
+                self.context.texture_extent.height,
+            ),
+            (self.surface_size.width, self.surface_size.height),
+        );
+    }
+
+    pub fn resize_buffer(&mut self, width: u32, height: u32) {
+        self.context.texture_extent.width = width;
+        self.context.texture_extent.height = height;
+
+        self.scaling_matrix_inverse = renderers::ScalingMatrix::new(
+            (
+                self.context.texture_extent.width,
+                self.context.texture_extent.height,
+            ),
+            (self.surface_size.width, self.surface_size.height),
+        )
+        .transform
+        .inversed();
+
+        self.context.scaling_renderer.resize(
+            &self.context.queue,
+            (
+                self.context.texture_extent.width,
+                self.context.texture_extent.height,
+            ),
+            (self.surface_size.width, self.surface_size.height),
+        );
+
+        let texture = self
+            .context
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("pixels_source_texture"),
+                size: self.context.texture_extent,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.context.texture_format,
+                usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+            });
+        self.context.render_texture_format =
+            texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let texture_format_size = get_texture_format_size(self.context.render_texture_format);
+
+        // Create the pixel buffer
+        let capacity = ((width * height) as f32 * texture_format_size) as usize;
+        let mut pixels = Vec::with_capacity(capacity);
+        pixels.resize_with(capacity, Default::default);
     }
 
     /// Draw this pixel buffer to the configured [`SurfaceTexture`].
